@@ -12,6 +12,21 @@ namespace LinkShortener.Data.Migrations
         protected override void Up(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.CreateTable(
+                name: "AboutPages",
+                columns: table => new
+                {
+                    ID = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    Content = table.Column<string>(type: "nvarchar(max)", nullable: false),
+                    LastModified = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    ModifiedBy = table.Column<string>(type: "nvarchar(max)", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_AboutPages", x => x.ID);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "shortedLink",
                 columns: table => new
                 {
@@ -32,6 +47,9 @@ namespace LinkShortener.Data.Migrations
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
+            migrationBuilder.DropTable(
+                name: "AboutPages");
+
             migrationBuilder.DropTable(
                 name: "shortedLink");
         }

@@ -2,6 +2,7 @@
 
 @{
     ViewData["Title"] = "Details";
+    var domainPrefix = "short.com/";
 }
 
 <h1>Details</h1>
@@ -20,7 +21,11 @@
             @Html.DisplayNameFor(model => model.ShortURL)
         </dt>
         <dd class = "col-sm-10">
-            @Html.DisplayFor(model => model.ShortURL)
+            @if (!string.IsNullOrEmpty(Model?.ShortURL)) {
+                <a asp-action="RedirectToOriginal" asp-route-shortUrl="@Model.ShortURL" target="_blank" rel="noopener noreferrer">@domainPrefix@Model.ShortURL</a>
+            } else {
+                @Html.DisplayFor(model => model.ShortURL)
+            }
         </dd>
         <dt class = "col-sm-2">
             @Html.DisplayNameFor(model => model.CreatedDate)

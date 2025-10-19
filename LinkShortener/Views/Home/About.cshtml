@@ -1,0 +1,43 @@
+﻿@using System.Net
+@model LinkShortener.Models.AboutPage
+@{
+    ViewData["Title"] = "About the algorithm and service";
+    var isAdmin = ViewData["IsAdmin"] as bool? ?? (User != null && (User.IsInRole("Administrator") || User.IsInRole("Admin")));
+}
+<h1>@ViewData["Title"]</h1>
+
+<div>
+    @if (string.IsNullOrWhiteSpace(Model?.Content))
+    {
+        @Html.Raw("<p>No information available.</p>")
+    }
+    else
+    {
+        var content = Model.Content;
+        // If the content likely contains HTML tags, render it as-is (HTML allowed).
+        var hasHtmlTags = content.Contains("<") && content.Contains(">");
+        if (hasHtmlTags)
+        {
+            @Html.Raw(content)
+        }
+        else
+        {
+            // Encode plain text then preserve newlines by converting to <br />
+            var encoded = WebUtility.HtmlEncode(content).Replace("\r\n","\n").Replace("\n","<br />");
+            @Html.Raw(encoded)
+        }
+    }
+</div>
+
+@if (isAdmin)
+{
+    <hr />
+    <h3>Edit About Page</h3>
+    <form asp-action="EditAbout" method="post">
+        <div class="form-group">
+            <label for="content">Content (HTML allowed)</label>
+            <textarea id="content" name="content" class="form-control" rows="10">@Model?.Content</textarea>
+        </div>
+        <button type="submit" class="btn btn-primary">Save</button>
+    </form>
+}

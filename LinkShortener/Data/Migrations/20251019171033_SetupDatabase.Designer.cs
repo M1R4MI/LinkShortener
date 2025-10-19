@@ -12,7 +12,7 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace LinkShortener.Data.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    [Migration("20251019084526_SetupDatabase")]
+    [Migration("20251019171033_SetupDatabase")]
     partial class SetupDatabase
     {
         /// <inheritdoc />
@@ -24,6 +24,29 @@ namespace LinkShortener.Data.Migrations
                 .HasAnnotation("Relational:MaxIdentifierLength", 128);
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
+
+            modelBuilder.Entity("LinkShortener.Models.AboutPage", b =>
+                {
+                    b.Property<int>("ID")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("ID"));
+
+                    b.Property<string>("Content")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("LastModified")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ModifiedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("ID");
+
+                    b.ToTable("AboutPages");
+                });
 
             modelBuilder.Entity("LinkShortener.Models.Shortlink", b =>
                 {

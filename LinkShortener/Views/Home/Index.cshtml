@@ -1,8 +1,58 @@
-﻿@{
-    ViewData["Title"] = "Home Page";
+﻿@model IEnumerable<LinkShortener.Models.Shortlink>
+
+@{
+    ViewData["Title"] = "List of shortened links";
 }
 
-<div class="text-center">
-    <h1 class="display-4">Welcome</h1>
-    <p>Learn about <a href="https://learn.microsoft.com/aspnet/core">building Web apps with ASP.NET Core</a>.</p>
-</div>
+<h1>List of shortened links</h1>
+
+<p>
+    <a asp-controller="ShortLinks" asp-action="Create">Create New</a>
+</p>
+<table class="table">
+    <thead>
+        <tr>
+            <th>
+                @Html.DisplayNameFor(model => model.OriginalURL)
+            </th>
+            <th>
+                @Html.DisplayNameFor(model => model.ShortURL)
+            </th>
+            <th>
+                @Html.DisplayNameFor(model => model.CreatedDate)
+            </th>
+            <th>
+                @Html.DisplayNameFor(model => model.CreatedBy)
+            </th>
+            <th>
+                @Html.DisplayNameFor(model => model.RedirectCount)
+            </th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody>
+@foreach (var item in Model) {
+        <tr>
+            <td class="text-break" style="white-space:normal;">
+                @Html.DisplayFor(modelItem => item.OriginalURL)
+            </td>
+            <td class="text-break" style="white-space:normal;">
+                @Html.DisplayFor(modelItem => item.ShortURL)
+            </td>
+            <td>
+                @Html.DisplayFor(modelItem => item.CreatedDate)
+            </td>
+            <td>
+                @Html.DisplayFor(modelItem => item.CreatedBy)
+            </td>
+            <td>
+                @Html.DisplayFor(modelItem => item.RedirectCount)
+            </td>
+            <td>
+                <a asp-controller="ShortLinks" asp-action="Details" asp-route-id="@item.ID">Details</a> |
+                <a asp-controller="ShortLinks" asp-action="Delete" asp-route-id="@item.ID">Delete</a>
+            </td>
+        </tr>
+}
+    </tbody>
+</table>

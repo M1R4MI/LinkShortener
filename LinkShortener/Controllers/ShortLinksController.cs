@@ -8,12 +8,16 @@ using Microsoft.EntityFrameworkCore;
 using LinkShortener.Data;
 using LinkShortener.Models;
 using Microsoft.AspNetCore.Authorization;
+using System.Text;
+using System.Security.Cryptography;
 
 namespace LinkShortener.Controllers
 {
     public class ShortLinksController : Controller
     {
         private readonly ApplicationDbContext _context;
+        private const string DomainPrefix = "short.com/"; // display prefix
+        private const int MaxTotalShortUrlLength = 20; // must match model MaxLength
 
         public ShortLinksController(ApplicationDbContext context)
         {
@@ -44,6 +48,33 @@ namespace LinkShortener.Controllers
             return View(shortlink);
         }
 
+        // GET: ShortLinks/RedirectToOriginal?shortUrl={shortUrl}
+        [HttpGet]
+        public async Task<IActionResult> RedirectToOriginal(string shortUrl)
+        {
+            if (string.IsNullOrEmpty(shortUrl))
+            {
+                return NotFound();
+            }
+
+            // Accept either a full short URL (e.g. "short.com/abc") or just the code ("abc").
+            var code = shortUrl.Contains('/') ? shortUrl.Substring(shortUrl.LastIndexOf('/') + 1) : shortUrl;
+
+            var link = await _context.shortedLink.FirstOrDefaultAsync(x => x.ShortURL == code);
+            if (link == null)
+            {
+                return NotFound();
+            }
+
+            link.RedirectCount++;
+            await _context.SaveChangesAsync();
+
+            // Ensure the original URL is absolute (has scheme) before redirecting
+            var target = NormalizeUrl(link.OriginalURL);
+
+            return Redirect(target);
+        }
+
         // GET: ShortLinks/Create
         [Authorize]
         public IActionResult Create()
@@ -60,17 +91,20 @@ namespace LinkShortener.Controllers
         public async Task<IActionResult> Create([Bind("OriginalURL")] Shortlink shortlink)
         {
             var userName = User?.Identity?.Name ?? "Unknown";
-            var shortCode = GenerateShortCode(shortlink.OriginalURL);
+
+            // Normalize the OriginalURL to include a scheme if the user omitted it (e.g., "youtube.com" -> "https://youtube.com")
+            shortlink.OriginalURL = NormalizeUrl(shortlink.OriginalURL);
+
+            var shortCode = await GenerateShortCodeAsync(shortlink.OriginalURL);
             var newLink = new Shortlink
             {
                 OriginalURL = shortlink.OriginalURL,
+                // Store only the generated code (without domain) so it always fits the MaxLength constraint
                 ShortURL = shortCode,
                 CreatedBy = userName,
                 CreatedDate = DateTime.Now,
                 RedirectCount = 0
             };
-
-            shortlink = newLink;
 
             // Validate the fully populated model (including ShortURL, CreatedBy, etc.)
             ModelState.Clear();
@@ -81,59 +115,6 @@ namespace LinkShortener.Controllers
                 return RedirectToAction(nameof(Index));
             }
 
-            return View(newLink);
-        }
-
-        // GET: ShortLinks/Edit/5
-        [Authorize]
-        public async Task<IActionResult> Edit(int? id)
-        {
-            if (id == null)
-            {
-                return NotFound();
-            }
-
-            var shortlink = await _context.shortedLink.FindAsync(id);
-            if (shortlink == null)
-            {
-                return NotFound();
-            }
-            return View(shortlink);
-        }
-
-        // POST: ShortLinks/Edit/5
-        // To protect from overposting attacks, enable the specific properties you want to bind to.
-        // For more details, see http://go.microsoft.com/fwlink/?LinkId=317598.
-        [Authorize]
-        [HttpPost]
-        [ValidateAntiForgeryToken]
-        public async Task<IActionResult> Edit(int id, [Bind("ID,OriginalURL,ShortURL,CreatedDate,CreatedBy,RedirectCount")] Shortlink shortlink)
-        {
-            if (id != shortlink.ID)
-            {
-                return NotFound();
-            }
-
-            if (ModelState.IsValid)
-            {
-                try
-                {
-                    _context.Update(shortlink);
-                    await _context.SaveChangesAsync();
-                }
-                catch (DbUpdateConcurrencyException)
-                {
-                    if (!ShortlinkExists(shortlink.ID))
-                    {
-                        return NotFound();
-                    }
-                    else
-                    {
-                        throw;
-                    }
-                }
-                return RedirectToAction(nameof(Index));
-            }
             return View(shortlink);
         }
 
@@ -153,6 +134,12 @@ namespace LinkShortener.Controllers
                 return NotFound();
             }
 
+            var currentUser = User?.Identity?.Name ?? string.Empty;
+            if (!IsAdmin() && !string.Equals(shortlink.CreatedBy, currentUser, StringComparison.OrdinalIgnoreCase))
+            {
+                return Forbid();
+            }
+
             return View(shortlink);
         }
 
@@ -163,46 +150,94 @@ namespace LinkShortener.Controllers
         public async Task<IActionResult> DeleteConfirmed(int id)
         {
             var shortlink = await _context.shortedLink.FindAsync(id);
-            if (shortlink != null)
+            if (shortlink == null)
+                return NotFound();
+
+            var currentUser = User?.Identity?.Name ?? string.Empty;
+            if (!IsAdmin() || !string.Equals(shortlink.CreatedBy, currentUser, StringComparison.OrdinalIgnoreCase))
             {
-                _context.shortedLink.Remove(shortlink);
+                return Forbid();
             }
+
+            _context.shortedLink.Remove(shortlink);
 
             await _context.SaveChangesAsync();
             return RedirectToAction(nameof(Index));
         }
 
-        private bool ShortlinkExists(int id)
+        // Ensures the URL has an HTTP/HTTPS scheme. If missing, prepends "https://".
+        private string NormalizeUrl(string? url)
         {
-            return _context.shortedLink.Any(e => e.ID == id);
+            if (string.IsNullOrWhiteSpace(url))
+                return url ?? string.Empty;
+
+            if (url.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+                url.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+            {
+                return url;
+            }
+
+            return "https://" + url;
         }
 
-
-        //[HttpGet("{shortCode}")]
-        //public IActionResult RedirectToOriginal(string shortCode)
-        //{
-        //    var link = _context.shortedLink.FirstOrDefault(x => x.ShortURL == shortCode);
-        //    if (link == null)
-        //        return NotFound("Short URL not found");
-
-        //    link.RedirectCount++;
-        //    _context.SaveChanges();
-
-        //    return Redirect(link.OriginalURL);
-        //}
-
-        private string GenerateShortCode(string? input)
+        // Returns true if the current user is in an administrator role. The project previously had a typo in the role name, so check both variants.
+        private bool IsAdmin()
         {
-            using var sha256 = System.Security.Cryptography.SHA256.Create();
-            var hashBytes = sha256.ComputeHash(System.Text.Encoding.UTF8.GetBytes(input + DateTime.UtcNow));
-            var base64 = Convert.ToBase64String(hashBytes)
-                .Replace("/", "")
-                .Replace("+", "")
-                .Replace("=", "")
-                .Substring(0, 8);
+            return User != null && (User.IsInRole("Administrator") || User.IsInRole("Admin"));
+        }
 
-            var result = $"short.com//{base64}";
-            return result;
+        // Generate a short code using SHA256, make it URL-safe, and ensure uniqueness by checking the database.
+        private async Task<string> GenerateShortCodeAsync(string? input)
+        {
+            // Use a fallback input if null/empty
+            var baseInput = string.IsNullOrEmpty(input) ? Guid.NewGuid().ToString() : input;
+
+            const int maxAttempts = 1000;
+            int attempt = 0;
+
+            // Determine maximum code length so that DomainPrefix + code fits into MaxTotalShortUrlLength
+            var maxCodeLength = Math.Max(4, MaxTotalShortUrlLength - DomainPrefix.Length); // ensure at least 4
+
+            while (attempt < maxAttempts)
+            {
+                // Combine input with attempt counter and ticks to vary the hash
+                var combined = $"{baseInput}|{attempt}|{DateTime.UtcNow.Ticks}";
+
+                byte[] hashBytes;
+                using (var sha256 = SHA256.Create())
+                {
+                    hashBytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(combined));
+                }
+
+                // Convert to URL-safe Base64-like string (remove +, /, =)
+                var candidateKey = Convert.ToBase64String(hashBytes)
+                    .Replace("+", "")
+                    .Replace("/", "")
+                    .Replace("=", "");
+
+                // Keep only alphanumeric characters to be safe for URLs
+                candidateKey = new string(candidateKey.Where(char.IsLetterOrDigit).ToArray());
+                if (candidateKey.Length < maxCodeLength)
+                {
+                    candidateKey = candidateKey.PadRight(maxCodeLength, 'A');
+                }
+
+                // Limit to maxCodeLength so when prefixed it does not exceed MaxTotalShortUrlLength
+                candidateKey = candidateKey.Substring(0, Math.Min(maxCodeLength, candidateKey.Length));
+
+                var candidate = candidateKey; // store only code, not domain
+
+                // Check database for existing short URL code
+                var exists = await _context.shortedLink.AnyAsync(s => s.ShortURL == candidate);
+                if (!exists)
+                {
+                    return candidate;
+                }
+
+                attempt++;
+            }
+
+            throw new InvalidOperationException("Unable to generate a unique short code after multiple attempts.");
         }
     }
 }

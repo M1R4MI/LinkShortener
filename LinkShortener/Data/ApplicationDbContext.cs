@@ -10,5 +10,6 @@ namespace LinkShortener.Data
             : base(options) { }
 
         public DbSet<Shortlink> shortedLink { get; set; } = null!;
+        public DbSet<AboutPage> AboutPages { get; set; } = null!; // store about page content
     }
 }
